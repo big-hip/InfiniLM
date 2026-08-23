@@ -26,7 +26,7 @@ from .speculative_base import SpeculativeRunnerBase
 class MtpSpeculativeRunner(SpeculativeRunnerBase):
     """Speculative decoding using MiMo's MTP head as the drafter."""
 
-    def __init__(self, config, target_model_engine, device):
+    def __init__(self, config, target_model_engine):
         super().__init__(config, target_model_engine)
 
     def forward(self, scheduler_output, model_input):
@@ -76,7 +76,7 @@ class MtpSpeculativeRunner(SpeculativeRunnerBase):
         # On the first forward, populate the MTP KV cache over the prompt so the
         # draft chain below attends to the true prefix.
         if scheduler_output.is_prefill and base_len > 1:
-            self._seed_mtp_cache(req, hidden_states, base_len)
+            self._seed_mtp_cache(req, hidden_states)
 
         # `combined` is the full speculative window: the token the backbone just
         # proposed (`target_token`, at `base_len - 1`) plus the MTP drafts for
@@ -97,8 +97,8 @@ class MtpSpeculativeRunner(SpeculativeRunnerBase):
             output_tokens = output_tokens[:remaining]
         return [output_tokens]
 
-    def _seed_mtp_cache(self, req, hidden_states, base_len):
-        """Fill the MTP KV cache for prompt positions [0, base_len-2].
+    def _seed_mtp_cache(self, req, hidden_states):
+        """Fill the MTP KV cache for prompt positions [0, len(prompt)-2].
 
         The MTP layer at position `p` consumes `[h[p] | embed[x_{p+1}]]`; the
         seed runs it over the true prompt so the draft chain below attends to

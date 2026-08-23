@@ -124,6 +124,13 @@ class ModelRunner:
                     "use_mtp requires pipeline_parallel_size=1 (the MTP head "
                     "placement across pipeline stages is not handled yet)"
                 )
+            # Fail fast if the checkpoint declares no MTP head.
+            hf_config = self.model_engine.hf_config
+            if hf_config.get("num_nextn_predict_layers", 0) <= 0:
+                raise RuntimeError(
+                    "use_mtp requires the model config to declare "
+                    "num_nextn_predict_layers >= 1 (no MTP head registered)"
+                )
             if config.enable_prefix_caching:
                 # MTP seeding needs the full-prompt backbone hiddens, which
                 # prefix caching truncates. This runs before the scheduler is
@@ -134,7 +141,7 @@ class ModelRunner:
                 )
                 config.enable_prefix_caching = False
             self.speculative_runner = MtpSpeculativeRunner(
-                config, self.model_engine, self.device
+                config, self.model_engine
             )
         elif config.draft_model_path is not None:
             self.speculative_runner = SpeculativeRunner(

@@ -34,9 +34,10 @@ class SpeculativeRunnerBase:
 
         `draft_tokens[0]` is the token at the current frontier; the target
         model's verification samples `segment[i]` at the position of
-        `draft_tokens[i]` (predicting `draft_tokens[i+1]`). We accept the
-        longest prefix of `draft_tokens` that the target confirms, then take
-        the target's next proposal as the correction.
+        `draft_tokens[i]` (predicting `draft_tokens[i+1]`). `segment` and
+        `draft_tokens` cover the same verification window and are equal in
+        length. We accept the longest prefix of `draft_tokens` that the target
+        confirms, then take the target's next proposal as the correction.
 
         Returns `(accepted, correction)` with `accepted >= 1`.
         """

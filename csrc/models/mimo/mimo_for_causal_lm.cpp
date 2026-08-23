@@ -1,6 +1,7 @@
 #include "mimo_for_causal_lm.hpp"
 #include "../models_registry.hpp"
 #include "infinicore/ops.hpp"
+#include "infinicore/ops/cat.hpp"
 #include <stdexcept>
 #include <string>
 
@@ -8,20 +9,20 @@ namespace infinilm::models::mimo {
 
 MiMoMTPLayers::MiMoMTPLayers(std::shared_ptr<infinilm::config::ModelConfig> model_config,
                              const infinicore::Device &device,
-                             size_t layer_idx)
-    : hidden_size_(model_config->get<size_t>("hidden_size")) {
+                             size_t layer_idx) {
+    const size_t hidden_size = model_config->get<size_t>("hidden_size");
     const auto &dtype{model_config->get_dtype()};
     double rms_norm_eps = model_config->get<double>("rms_norm_eps");
 
-    INFINICORE_NN_MODULE_INIT(token_layernorm, hidden_size_, rms_norm_eps, dtype, device);
-    INFINICORE_NN_MODULE_INIT(hidden_layernorm, hidden_size_, rms_norm_eps, dtype, device);
+    INFINICORE_NN_MODULE_INIT(token_layernorm, hidden_size, rms_norm_eps, dtype, device);
+    INFINICORE_NN_MODULE_INIT(hidden_layernorm, hidden_size, rms_norm_eps, dtype, device);
     // input_proj fuses [hidden_layernorm(hidden) | token_layernorm(embed)] -> hidden.
-    INFINICORE_NN_MODULE_INIT(input_proj, hidden_size_ * 2, hidden_size_, false, dtype, device);
-    INFINICORE_NN_MODULE_INIT(input_layernorm, hidden_size_, rms_norm_eps, dtype, device);
+    INFINICORE_NN_MODULE_INIT(input_proj, hidden_size * 2, hidden_size, false, dtype, device);
+    INFINICORE_NN_MODULE_INIT(input_layernorm, hidden_size, rms_norm_eps, dtype, device);
     self_attn_ = this->register_module<MiMoAttention>("self_attn", model_config, layer_idx, device);
-    INFINICORE_NN_MODULE_INIT(post_attention_layernorm, hidden_size_, rms_norm_eps, dtype, device);
+    INFINICORE_NN_MODULE_INIT(post_attention_layernorm, hidden_size, rms_norm_eps, dtype, device);
     mlp_ = this->register_module<MiMoMLP>("mlp", model_config, device);
-    INFINICORE_NN_MODULE_INIT(final_layernorm, hidden_size_, rms_norm_eps, dtype, device);
+    INFINICORE_NN_MODULE_INIT(final_layernorm, hidden_size, rms_norm_eps, dtype, device);
 }
 
 infinicore::Tensor MiMoMTPLayers::forward(const infinicore::Tensor &input_embeds,
@@ -31,11 +32,7 @@ infinicore::Tensor MiMoMTPLayers::forward(const infinicore::Tensor &input_embeds
     auto hidden_normed = hidden_layernorm_->forward(hidden_states);
 
     // Fuse [hidden_layernorm(hidden) | token_layernorm(embed)] along the last dim.
-    auto fused_shape = token_normed->shape();
-    fused_shape.back() = hidden_size_ * 2;
-    auto fused_input = infinicore::Tensor::empty(fused_shape, token_normed->dtype(), token_normed->device());
-    fused_input->narrow({{fused_shape.size() - 1, 0, hidden_size_}})->copy_from(hidden_normed);
-    fused_input->narrow({{fused_shape.size() - 1, hidden_size_, hidden_size_}})->copy_from(token_normed);
+    auto fused_input = infinicore::op::cat({hidden_normed, token_normed}, -1);
 
     auto hidden = input_proj_->forward(fused_input);
 

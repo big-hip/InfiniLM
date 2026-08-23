@@ -58,8 +58,6 @@ protected:
     INFINICORE_NN_MODULE(infinicore::nn::RMSNorm, post_attention_layernorm);
     INFINICORE_NN_MODULE(MiMoMLP, mlp);
     INFINICORE_NN_MODULE(infinicore::nn::RMSNorm, final_layernorm);
-
-    size_t hidden_size_;
 };
 
 /**
@@ -76,7 +74,10 @@ public:
               const infinicore::Device &device)
         : Base(model_config, device) {
         size_t num_hidden_layers = model_config->get<size_t>("num_hidden_layers");
-        size_t num_mtp_layers = model_config->get_or<size_t>("num_nextn_predict_layers", 1);
+        // Default 0 so a config without an MTP head stays consistent with the
+        // KV-cache allocation (InfinilmModel reserves num_nextn_predict_layers
+        // extra slots); MiMo-7B ships with num_nextn_predict_layers=1.
+        size_t num_mtp_layers = model_config->get_or<size_t>("num_nextn_predict_layers", 0);
         mtp_layers_.reserve(num_mtp_layers);
         // Each MTP layer owns its own KV-cache slot past the backbone layers.
         for (size_t i = 0; i < num_mtp_layers; ++i) {

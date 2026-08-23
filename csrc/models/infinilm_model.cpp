@@ -63,18 +63,6 @@ std::vector<infinicore::Tensor> InfinilmModel::default_allocate_kv_cache_tensors
                 *static_kv_cache_config);
             kv_cache_vec[layer_idx] = kv_cache;
         }
-        // MTP layers own the slots immediately after the backbone layers.
-        for (size_t layer_idx = local_layer_end; layer_idx < local_layer_end + num_mtp_layers; ++layer_idx) {
-            auto kv_cache = cache::StaticKVCache::create_layer_kv_cache(
-                head_dim,
-                head_dim,
-                num_key_value_heads,
-                num_key_value_heads,
-                max_position_embeddings,
-                dtype,
-                *static_kv_cache_config);
-            kv_cache_vec[layer_idx] = kv_cache;
-        }
         break;
     }
     case backends::AttentionBackend::FLASH_ATTN: {
@@ -98,23 +86,45 @@ std::vector<infinicore::Tensor> InfinilmModel::default_allocate_kv_cache_tensors
                 *paged_kv_cache_config);
             kv_cache_vec[layer_idx] = kv_cache;
         }
-        // MTP layers own the slots immediately after the backbone layers.
-        for (size_t layer_idx = local_layer_end; layer_idx < local_layer_end + num_mtp_layers; ++layer_idx) {
-            auto kv_cache = cache::PagedKVCache::create_layer_kv_cache(
-                head_dim,
-                head_dim,
-                num_key_value_heads,
-                num_key_value_heads,
-                dtype,
-                *paged_kv_cache_config);
-            kv_cache_vec[layer_idx] = kv_cache;
-        }
         infinicore::context::syncStream();
         break;
     }
     default:
         throw std::runtime_error("infinilm::InfinilmModel::default_allocate_kv_cache_tensors: Unsupported attention backend: " + std::to_string(static_cast<int>(attention_backend)));
     }
+
+    // Models with MTP (multi-token prediction) heads, e.g. MiMo, keep one
+    // KV-cache slot per MTP layer, indexed past the backbone layers
+    // (MiMoMTPLayers registers its self-attention at layer_idx =
+    // num_hidden_layers + i). Allocate them with the same backend as the
+    // backbone.
+    if (const auto *static_kv_cache_config =
+            dynamic_cast<const cache::StaticKVCacheConfig *>(cache_config)) {
+        for (size_t layer_idx = local_layer_end;
+             layer_idx < local_layer_end + num_mtp_layers; ++layer_idx) {
+            kv_cache_vec[layer_idx] = cache::StaticKVCache::create_layer_kv_cache(
+                head_dim,
+                head_dim,
+                num_key_value_heads,
+                num_key_value_heads,
+                max_position_embeddings,
+                dtype,
+                *static_kv_cache_config);
+        }
+    } else if (const auto *paged_kv_cache_config =
+                   dynamic_cast<const cache::PagedKVCacheConfig *>(cache_config)) {
+        for (size_t layer_idx = local_layer_end;
+             layer_idx < local_layer_end + num_mtp_layers; ++layer_idx) {
+            kv_cache_vec[layer_idx] = cache::PagedKVCache::create_layer_kv_cache(
+                head_dim,
+                head_dim,
+                num_key_value_heads,
+                num_key_value_heads,
+                dtype,
+                *paged_kv_cache_config);
+        }
+    }
+
     return kv_cache_vec;
 }
 
