@@ -123,6 +123,24 @@ The integration approach within `csrc/models/llama_legacy/` is **not the current
 
 **Files**: `csrc/models/minicpm_sala/minicpm_sala_for_causal_lm.hpp`, `.cpp`, `minicpm_sala_allocate_kv_cache_tensors.cpp` etc.
 
+### 3.4 `mimo`: Qwen2 Backbone + MTP (Multi-Token Prediction)
+
+MiMo is a Qwen2 model plus a stack of MTP heads. The backbone reuses the shared
+`TextDecoderLayer`/`TextModel`/`TextCausalLM`; the MTP heads are new modules:
+
+- **`MiMoMTPLayers`**: fuses `[hidden_layernorm(hidden) | token_layernorm(embed)]`
+  through an `input_proj`, runs one standard decoder block, then `final_layernorm`.
+  Its output feeds the shared `lm_head` to predict the next-next token.
+- **KV cache**: each MTP layer gets its own cache slot *past* the backbone layers
+  (`layer_idx = num_hidden_layers + i`), so its attention never reuses a backbone
+  slot. `InfinilmModel::default_allocate_kv_cache_tensors` reserves
+  `num_nextn_predict_layers` extra slots for any config that declares it.
+- **Forward**: when `Input::target_hidden_states` is present, `MiMoForCausalLM`
+  runs `forward_mtp` instead of the backbone and emits next-next-token logits.
+
+**Files**: `csrc/models/mimo/mimo_for_causal_lm.hpp`, `.cpp`, and the MTP-slot
+allocation in `csrc/models/infinilm_model.cpp`.
+
 
 
 ---
