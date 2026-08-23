@@ -13,6 +13,7 @@ from infinilm.kv_connector import (
     KVConnectorFactory,
     KVConnectorRole,
 )
+from infinilm.llm.model_runner.mtp_speculative_runner import MtpSpeculativeRunner
 from infinilm.llm.model_runner.speculative_runner import SpeculativeRunner
 from infinilm.modeling_utils import load_model_state_dict_by_file
 from infinilm.processors import AutoInfinilmProcessor
@@ -107,7 +108,35 @@ class ModelRunner:
             )
 
         self.speculative_runner = None
-        if config.draft_model_path is not None:
+        if config.use_mtp:
+            if self.model_engine.model_type != "mimo":
+                raise RuntimeError(
+                    "use_mtp requires a MiMo model (with model.mtp_layers.N), "
+                    f"got model_type={self.model_engine.model_type}"
+                )
+            if config.cache_type != "static":
+                raise RuntimeError(
+                    "use_mtp requires cache_type='static' (MTP uses a shared "
+                    "KV cache slot and the static attention backend is batch=1)"
+                )
+            if config.pipeline_parallel_size != 1:
+                raise RuntimeError(
+                    "use_mtp requires pipeline_parallel_size=1 (the MTP head "
+                    "placement across pipeline stages is not handled yet)"
+                )
+            if config.enable_prefix_caching:
+                # MTP seeding needs the full-prompt backbone hiddens, which
+                # prefix caching truncates. This runs before the scheduler is
+                # constructed, so mutating the config is safe.
+                logger.warning(
+                    "use_mtp forces enable_prefix_caching=False (MTP seeding "
+                    "needs full-prompt backbone hiddens)"
+                )
+                config.enable_prefix_caching = False
+            self.speculative_runner = MtpSpeculativeRunner(
+                config, self.model_engine, self.device
+            )
+        elif config.draft_model_path is not None:
             self.speculative_runner = SpeculativeRunner(
                 config, self.model_engine, self.device
             )

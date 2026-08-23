@@ -339,6 +339,7 @@ class LLM:
         self,
         model_path: str,
         draft_model_path: Optional[str] = None,
+        use_mtp: bool = False,
         num_draft_tokens: int = 4,
         device: str = "cuda",
         dtype: str = "float16",
@@ -371,6 +372,9 @@ class LLM:
 
         Args:
             model_path: Path to the model directory.
+            use_mtp: Enable MiMo MTP speculative decoding (the model's own MTP
+                head drafts for the backbone). Requires a MiMo model and
+                cache_type='static'; single-request batch only.
             device: Device type ('cpu', 'cuda', 'mlu', 'moore').
             dtype: Data type ('float16', 'bfloat16', 'float32').
             tensor_parallel_size: Number of devices for tensor parallelism.
@@ -391,6 +395,7 @@ class LLM:
         config = EngineConfig(
             model_path=model_path,
             draft_model_path=draft_model_path,
+            use_mtp=use_mtp,
             num_draft_tokens=num_draft_tokens,
             device=device,
             dtype=dtype,
@@ -566,6 +571,7 @@ class AsyncLLMEngine:
         self,
         model_path: str,
         draft_model_path: Optional[str] = None,
+        use_mtp: bool = False,
         num_draft_tokens: int = 4,
         device: str = "cuda",
         dtype: str = "float16",
@@ -599,6 +605,9 @@ class AsyncLLMEngine:
 
         Args:
             model_path: Path to the model directory.
+            use_mtp: Enable MiMo MTP speculative decoding (the model's own MTP
+                head drafts for the backbone). Requires a MiMo model and
+                cache_type='static'; single-request batch only.
             device: Device type ('cpu', 'cuda', 'mlu', 'moore').
             dtype: Data type ('float16', 'bfloat16', 'float32').
             tensor_parallel_size: Number of devices for tensor parallelism.
@@ -623,6 +632,7 @@ class AsyncLLMEngine:
         config = EngineConfig(
             model_path=model_path,
             draft_model_path=draft_model_path,
+            use_mtp=use_mtp,
             num_draft_tokens=num_draft_tokens,
             device=device,
             dtype=dtype,

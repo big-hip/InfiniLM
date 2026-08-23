@@ -11,7 +11,10 @@ class EngineConfig:
     Attributes:
         model_path: Path to the model directory.
         draft_model_path: Optional Eagle/MTP draft model directory.
-        num_draft_tokens: Number of Eagle draft tokens to verify per step.
+        use_mtp: Whether to enable MiMo MTP speculative decoding (the model's
+            own MTP head drafts for the backbone). Requires model_type 'mimo',
+            cache_type 'static' and a single request at a time.
+        num_draft_tokens: Number of draft tokens to verify per step.
         device: Device type string ('cpu', 'cuda', 'mlu', etc.).
         dtype: Data type string ('float16', 'bfloat16', 'float32').
         tensor_parallel_size: Number of devices for tensor parallelism.
@@ -41,6 +44,7 @@ class EngineConfig:
 
     model_path: str
     draft_model_path: Optional[str] = None
+    use_mtp: bool = False
     num_draft_tokens: int = 4
     device: str = "cuda"
     dtype: str = "float16"

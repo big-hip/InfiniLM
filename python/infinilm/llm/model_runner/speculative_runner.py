@@ -4,12 +4,12 @@ from infinilm.distributed import DistConfig
 from infinilm.infer_engine import InferEngine
 from infinilm.modeling_utils import load_model_state_dict_by_file
 
+from .speculative_base import SpeculativeRunnerBase
 
-class SpeculativeRunner:
+
+class SpeculativeRunner(SpeculativeRunnerBase):
     def __init__(self, config, target_model_engine, device):
-        self.config = config
-        self.target_model_engine = target_model_engine
-        self.num_draft_tokens = config.num_draft_tokens
+        super().__init__(config, target_model_engine)
         self.draft_max_batch_size = config.max_batch_size
         self.eagle_accept_count = 0
         self.eagle_total_count = 0
@@ -154,17 +154,7 @@ class SpeculativeRunner:
                 segment = verify_token_ids[
                     verify_offsets[idx] : verify_offsets[idx + 1]
                 ]
-                accepted = 1
-                correction = None
-                for draft_idx in range(1, len(draft_tokens)):
-                    expected = int(segment[draft_idx - 1])
-                    if draft_tokens[draft_idx] != expected:
-                        correction = expected
-                        break
-                    accepted += 1
-
-                if correction is None:
-                    correction = int(segment[len(draft_tokens) - 1])
+                accepted, correction = self._match_drafts(segment, draft_tokens)
 
                 self.eagle_accept_count += accepted
                 keep_tokens = candidate["base_len"] + accepted
