@@ -37,10 +37,13 @@ jobs:
       - uses: xmake-io/github-action-setup-xmake@v1
         with:
           xmake-version: latest
+          package-cache: true
+          build-cache: true
+          build-cache-key: mamba2-pinned-cpu-python311
       - name: Install test dependencies
         run: |
           python -m pip install torch==2.9.0 --index-url https://download.pytorch.org/whl/cpu
-          python -m pip install pytest numpy safetensors 'transformers==4.57.1' pillow janus sentencepiece protobuf einops
+          python -m pip install pytest numpy safetensors 'transformers==4.57.1' pillow janus sentencepiece protobuf einops xxhash
       - name: Combine pinned Core prerequisites
         working-directory: core
         run: |
@@ -54,15 +57,15 @@ jobs:
         working-directory: core
         run: |
           xmake f -y -m release --cpu=y --omp=y --ccl=y --graph=y --aten=n --cudnn=n
-          xmake build -y -j 2
+          xmake build -y -j 4
           xmake install -y
-          xmake build -y -j 2 _infinicore
+          xmake build -y -j 4 _infinicore
           xmake install -y _infinicore
       - name: Build LM from an empty build directory
         working-directory: lm
         run: |
           xmake f -y -m release -o build-ci
-          xmake build -y -j 2 _infinilm
+          xmake build -y -j 4 _infinilm
           xmake install -y _infinilm
       - name: Run CPU configuration and loading contracts
         working-directory: lm
