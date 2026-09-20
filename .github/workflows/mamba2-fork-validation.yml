@@ -1,0 +1,95 @@
+name: Mamba-2 fork validation
+
+on:
+  push:
+    branches: [ci/mamba2-review-20260920]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      INFINI_ROOT: ${{ github.workspace }}/install
+      LM_REF: 8a591cb1b920dd62fc7f7acf15a8fcdd8458974a
+      CORE_RUNTIME_REF: a3ac4df44fc902fe223b441e0255631cc6b73a71
+      CORE_SCAN_REF: f634435bb683895e5b084cf1e43f41f28da460ea
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.LM_REF }}
+          path: lm
+          submodules: recursive
+          fetch-depth: 0
+      - uses: actions/checkout@v4
+        with:
+          repository: big-hip/InfiniCore
+          ref: ${{ env.CORE_RUNTIME_REF }}
+          path: core
+          submodules: recursive
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: xmake-io/github-action-setup-xmake@v1
+        with:
+          xmake-version: latest
+      - name: Install test dependencies
+        run: |
+          python -m pip install torch==2.9.0 --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install pytest numpy safetensors 'transformers==4.57.1' pillow janus sentencepiece protobuf einops
+      - name: Combine pinned Core prerequisites
+        working-directory: core
+        run: |
+          git fetch origin "$CORE_SCAN_REF"
+          git diff 1ab85ef1 "$CORE_SCAN_REF" --binary > ../mamba-scan.patch
+          git apply --check ../mamba-scan.patch
+          git apply --index ../mamba-scan.patch
+          git write-tree > ../core-tree.txt
+          git rev-parse HEAD > ../core-runtime-head.txt
+      - name: Build and install Core on CPU
+        working-directory: core
+        run: |
+          xmake f -y -m release --cpu=y --omp=y --ccl=y --graph=y --aten=n --cudnn=n
+          xmake build -y -j 2
+          xmake install -y
+          xmake build -y -j 2 _infinicore
+          xmake install -y _infinicore
+      - name: Build LM from an empty build directory
+        working-directory: lm
+        run: |
+          xmake f -y -m release -o build-ci
+          xmake build -y -j 2 _infinilm
+          xmake install -y _infinilm
+      - name: Run CPU configuration and loading contracts
+        working-directory: lm
+        env:
+          PYTHONPATH: ${{ github.workspace }}/lm/python:${{ github.workspace }}/core/python
+          LD_LIBRARY_PATH: ${{ github.workspace }}/install/lib
+        run: |
+          python -m pytest -q --junitxml=../cpu-contracts.xml \
+            test/models/mamba2/test_adaptation.py::test_native_checkpoint_contract \
+            test/models/mamba2/test_adaptation.py::test_unsupported_variants_are_rejected \
+            test/models/mamba2/test_adaptation.py::test_zero_padding_token_is_preserved \
+            test/models/mamba2/test_adaptation.py::test_weight_mapping_preserves_state_parameters \
+            test/models/mamba2/test_adaptation.py::test_projection_remap_preserves_each_heads_inputs \
+            test/models/mamba2/test_adaptation.py::test_cpp_rejects_unsupported_config_before_model_creation \
+            test/models/mamba2/test_adaptation.py::test_processor_rejects_shared_writable_slots \
+            test/models/mamba2/test_adaptation.py::test_unsupported_service_combinations_fail_before_loading
+      - name: Record validation scope
+        if: always()
+        run: |
+          echo 'CPU build and configuration/loading contracts only; no GPU inference or performance claim.' >> "$GITHUB_STEP_SUMMARY"
+          echo "InfiniLM: $LM_REF" >> "$GITHUB_STEP_SUMMARY"
+          echo "Core runtime: $CORE_RUNTIME_REF; scan: $CORE_SCAN_REF" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mamba2-cpu-contracts
+          path: |
+            cpu-contracts.xml
+            core-tree.txt
+            core-runtime-head.txt
